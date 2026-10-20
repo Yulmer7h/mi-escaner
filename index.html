@@ -87,7 +87,7 @@
       const ultimoCodigoRef = useRef('');
       const tiempoUltimoEscaneoRef = useRef(0);
       
-      // RECURSO TÉCNICO: TIMER DE TOLERANCIA/REINTENTO PARA EVITAR ERRORES FALSOS
+      // TIMER INDUSTRIAL DE TOLERANCIA (1200ms)
       const timerLecturaInvalidaRef = useRef(null);
 
       useEffect(() => {
@@ -158,7 +158,7 @@
           scannerRef.current = html5QrCode;
 
           const config = { 
-            fps: 25, // Incrementado ligeramente para capturar más fotogramas por segundo
+            fps: 25, 
             qrbox: { width: 230, height: 210 },
             aspectRatio: 1.0
           };
@@ -174,7 +174,7 @@
               const ahora = Date.now();
 
               if (codigoLeido !== ultimoCodigoRef.current || (ahora - tiempoUltimoEscaneoRef.current) > (cooldown * 1000)) {
-                procesarCodigoConBuffer(codigoLeido, ahora);
+                procesarCodigoConBufferIndustrial(codigoLeido, ahora);
               }
             },
             () => {}
@@ -212,16 +212,15 @@
         }
       };
 
-      // --- NÚCLEO DE ESCANEO CON BUFFER DE REINTENTO ---
-      const procesarCodigoConBuffer = (codigo, timestamp) => {
+      // --- LÓGICA INDUSTRIAL CON 1.2 SEGUNDOS DE TOLERANCIA ---
+      const procesarCodigoConBufferIndustrial = (codigo, timestamp) => {
         const esValido7 = /^\d{7}$/.test(codigo);
         const esValido13 = /^1\d{12}$/.test(codigo);
 
-        // CASO A: El código SÍ cumple formato y SÍ existe en BD (Lectura Exitosa)
         const existe = (esValido7 || esValido13) && dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
+        // SI EL CÓDIGO ES CORRECTO: Cancela el timer de error inmediatamente y registra el OK
         if (existe) {
-          // Si había un timer de error en espera de un fotograma previo, lo cancelamos inmediatamente
           if (timerLecturaInvalidaRef.current) {
             clearTimeout(timerLecturaInvalidaRef.current);
             timerLecturaInvalidaRef.current = null;
@@ -236,7 +235,7 @@
           return;
         }
 
-        // CASO B: Es una lectura parcial o errónea (se le da 400ms de gracia por si la cámara logra enfocarlo)
+        // SI ES LECTURA DUDA/DEFECTUOSA: Espera 1200ms (1.2s) a que la cámara termine de enfocar
         if (!timerLecturaInvalidaRef.current) {
           timerLecturaInvalidaRef.current = setTimeout(() => {
             timerLecturaInvalidaRef.current = null;
@@ -249,7 +248,7 @@
 
             sonarError();
             actualizarEstadoUsuario(false, estadoFinal, codigo);
-          }, 400); // Ventana de 400ms para reintento automático
+          }, 1200); // Ventana industrial de 1.2 segundos
         }
       };
 
@@ -294,7 +293,6 @@
         const texto = codigoManual.trim();
         if (!texto) return;
 
-        // El envío manual o por pistola no necesita buffer, procesa directo
         const esValido7 = /^\d{7}$/.test(texto);
         const esValido13 = /^1\d{12}$/.test(texto);
 
