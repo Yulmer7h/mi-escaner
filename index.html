@@ -205,8 +205,9 @@
           const html5QrCode = new Html5Qrcode("reader");
           scannerRef.current = html5QrCode;
 
+          // Configuración optimizada a 15 FPS para optimizar batería y evitar calentamiento
           const config = { 
-            fps: 30, 
+            fps: 15, 
             qrbox: modoCaja === "panoramico" 
               ? (viewfinderWidth, viewfinderHeight) => ({ width: viewfinderWidth * 0.85, height: 130 })
               : { width: 230, height: 210 },
