@@ -235,17 +235,20 @@
         }
       };
 
-      // FUNCIÓN DE VALIDACIÓN PURA Y EXACTA (Posiciones 9, 10 y 11 obligatoriamente '100')
-      const esCodigoBataValido = (codigo) => {
-        if (!/^\d{13}$/.test(codigo)) return false; // Debe tener exactamente 13 dígitos numéricos
-        if (!codigo.startsWith('1')) return false;     // Debe empezar con 1
-        // Verificar que en las posiciones 9, 10 y 11 esté exactamente '100'
-        return codigo.substring(9, 12) === '100';
+      // VALIDACIÓN SIMPLE Y SEGURA POR POSICIÓN DE SUBSTRING
+      // 1. Debe medir 13 dígitos y empezar con '1'
+      // 2. Los caracteres de la posición 9 a la 11 (índice 9, 10, 11) deben ser '100'
+      const esEan13BataValido = (code) => {
+        const str = String(code).trim();
+        if (str.length !== 13) return false;
+        if (!str.startsWith('1')) return false;
+        const bloqueMedio = str.substring(9, 12); // Extrae los caracteres en posiciones 9, 10 y 11
+        return bloqueMedio === '100';
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        if (!esCodigoBataValido(codigo)) {
-          return; // Rechaza si no cumple la regla exacta del '100' en su posición
+        if (!esEan13BataValido(codigo)) {
+          return; // Rechaza silenciosamente si la cámara lee algo que no es
         }
 
         ultimoCodigoRef.current = codigo;
@@ -260,7 +263,7 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValidoEan13 = esCodigoBataValido(texto);
+        const esValidoEan13 = esEan13BataValido(texto);
 
         if (!esValido7 && !esValidoEan13) {
           sonarError(vibracionHabilitada);
