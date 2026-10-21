@@ -17,11 +17,10 @@
   <div id="root"></div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2M4uoO5I2c59rdFG0EO3Tz5c4yYAZjgO3a7D0XEQmo4tteISQYna9eTT_tqybWs0C/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzAop3ucrjAhM4wFR-xWrD-ZvmAsHfFg1VN6sjHAWDkZ2IY1f2IuNnBRHavOk8-DBJ9ng/exec";
 
     const { useState, useEffect, useRef, createElement: e } = React;
 
-    // Instancia Global de AudioContext para evitar bloqueos
     let globalAudioCtx = null;
 
     const obtenerAudioContext = () => {
