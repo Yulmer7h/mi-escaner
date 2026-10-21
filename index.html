@@ -108,7 +108,8 @@
       const [mostrarModal, setMostrarModal] = useState(false);
 
       const scannerRef = useRef(null);
-      const tiempoUltimoErrorRef = useRef(0); // Control exclusivo de enfriamiento post-error
+      const ultimoCodigoRef = useRef('');
+      const tiempoUltimoEscaneoRef = useRef(0);
 
       useEffect(() => {
         cargarBaseEnRAM();
@@ -197,12 +198,9 @@
               const codigoLeido = decodedText.trim();
               const ahora = Date.now();
 
-              // Si la lectura ANTERIOR fue error/no existe, respetamos el enfriamiento
-              if ((ahora - tiempoUltimoErrorRef.current) < (cooldown * 1000)) {
-                return;
+              if (codigoLeido !== ultimoCodigoRef.current || (ahora - tiempoUltimoEscaneoRef.current) > (cooldown * 1000)) {
+                procesarEscaneoCamara(codigoLeido, ahora);
               }
-
-              procesarEscaneoCamara(codigoLeido, ahora);
             },
             () => {}
           );
@@ -245,7 +243,10 @@
           return; 
         }
 
-        validarYGuardarCodigo(codigo, timestamp);
+        ultimoCodigoRef.current = codigo;
+        tiempoUltimoEscaneoRef.current = timestamp;
+
+        validarYGuardarCodigo(codigo);
       };
 
       const manejarEnvioManual = (ev) => {
@@ -258,7 +259,6 @@
 
         if (!esValido7 && !esValido13) {
           sonarError();
-          tiempoUltimoErrorRef.current = Date.now(); // Activa enfriamiento por error
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
@@ -267,10 +267,9 @@
         const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
 
         if (existe) {
-          validarYGuardarCodigo(texto, Date.now());
+          validarYGuardarCodigo(texto);
         } else {
           sonarError();
-          tiempoUltimoErrorRef.current = Date.now(); // Activa enfriamiento por error
           const confirmarFuerza = confirm(
             `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
           );
@@ -287,17 +286,15 @@
         setCodigoManual("");
       };
 
-      const validarYGuardarCodigo = (codigo, timestamp) => {
+      const validarYGuardarCodigo = (codigo) => {
         const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
         if (existe) {
           sonarExito();
-          // Lectura OK: NO marcamos tiempoUltimoErrorRef, por lo que el próximo escaneo pasa de inmediato
           actualizarEstadoUsuario(true, "OK", codigo);
           enviarAGoogleSheets(codigo, "guardar");
         } else {
           sonarError();
-          tiempoUltimoErrorRef.current = timestamp; // Marcamos el tiempo de error para activar el enfriamiento en el siguiente intento
           actualizarEstadoUsuario(false, "NO EXISTE", codigo);
         }
       };
