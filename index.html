@@ -235,14 +235,17 @@
         }
       };
 
-      const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        // REGLA ESTRICTA 100% BLINDADA:
-        // Debe ser EAN-13, empezar con 1, tener exactamente '100' antes de los últimos 2 dígitos.
-        // Rechaza automáticamente el 124 (como 1581650412423).
-        const esEan13Estricto = /^1\d{8}100\d{2}$/.test(codigo);
+      // FUNCIÓN DE VALIDACIÓN PURA Y EXACTA (Posiciones 9, 10 y 11 obligatoriamente '100')
+      const esCodigoBataValido = (codigo) => {
+        if (!/^\d{13}$/.test(codigo)) return false; // Debe tener exactamente 13 dígitos numéricos
+        if (!codigo.startsWith('1')) return false;     // Debe empezar con 1
+        // Verificar que en las posiciones 9, 10 y 11 esté exactamente '100'
+        return codigo.substring(9, 12) === '100';
+      };
 
-        if (!esEan13Estricto) {
-          return; 
+      const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
+        if (!esCodigoBataValido(codigo)) {
+          return; // Rechaza si no cumple la regla exacta del '100' en su posición
         }
 
         ultimoCodigoRef.current = codigo;
@@ -257,9 +260,9 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValidoEstricto = /^1\d{8}100\d{2}$/.test(texto);
+        const esValidoEan13 = esCodigoBataValido(texto);
 
-        if (!esValido7 && !esValidoEstricto) {
+        if (!esValido7 && !esValidoEan13) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
@@ -486,7 +489,7 @@
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o EAN-13 con 100)",
+            placeholder: "Manual (7 dígitos o EAN-13 válido)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
