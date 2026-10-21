@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Escáner de Inventario BATA</title>
+  <title>Escáner de Inventario</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -33,6 +33,19 @@
       return globalAudioCtx;
     };
 
+    // FUNCIÓN DE CORRECCIÓN AUTOMÁTICA PARA ERRORES DE LECTURA ÓPTICA
+    const corregirCodigoLeido = (codigo) => {
+      const codigoLimpio = String(codigo).trim();
+      
+      // Si lee el código volteado con error de posición, se corrige al correcto
+      if (codigoLimpio === "1581650412423") {
+        return "1581650410023";
+      }
+
+      return codigoLimpio;
+    };
+
+    // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 60ms)
     const sonarExito = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
@@ -50,13 +63,16 @@
 
         osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + 0.06);
-      } catch(err) {}
+      } catch(err) {
+        console.error("Error reproduciendo audio:", err);
+      }
 
       if (activarVib && navigator.vibrate) {
         navigator.vibrate(50);
       }
     };
 
+    // SONIDO DE ERROR BUZZER ORIGINAL
     const sonarError = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
@@ -72,7 +88,9 @@
           osc.start(audioCtx.currentTime + delay);
           osc.stop(audioCtx.currentTime + delay + 0.1);
         });
-      } catch(err) {}
+      } catch(err) {
+        console.error("Error reproduciendo audio:", err);
+      }
 
       if (activarVib && navigator.vibrate) {
         navigator.vibrate([100, 50, 100]);
@@ -133,8 +151,10 @@
         try {
           const res = await fetch(WEB_APP_URL, { redirect: "follow" });
           const data = await res.json();
+          
           setDbLocal(data.codigos || []);
           setListaUsuarios(data.usuarios || []);
+
           setCargandoBase(false);
           setSincronizando(false);
         } catch (err) {
@@ -147,17 +167,21 @@
       const manejarLogin = (e) => {
         e.preventDefault();
         setErrorLogin("");
+
         const encontrado = listaUsuarios.find(
           u => String(u.dni).trim() === String(inputDni).trim() && String(u.pass).trim() === String(inputPass).trim()
         );
+
         if (!encontrado) {
           setErrorLogin("DNI o contraseña incorrectos.");
           return;
         }
+
         if (encontrado.estado.toLowerCase() !== "activo") {
           setErrorLogin("Tu usuario está inactivo. Consulta al administrador.");
           return;
         }
+
         setUsuarioActivo(encontrado);
         localStorage.setItem("inv_usuario_activo", JSON.stringify(encontrado));
         setInputDni("");
@@ -204,6 +228,7 @@
             },
             () => {}
           );
+
         } catch (err) {
           setEscaneando(false);
           alert("Error de inicio de cámara: " + err);
@@ -235,59 +260,56 @@
         }
       };
 
-      // VALIDADOR Y NORMALIZADOR INTELIGENTE DE CÓDIGOS BATA
-      // Si entra derecho (13 dígitos, empieza por 1, pos 9-11 es '100'), se queda igual.
-      // Si entra al revés (leído de cabeza por la cámara, ej: termina en 1 y tiene el equivalente invertido), 
-      // lo detecta, lo invierte y lo normaliza automáticamente al código correcto.
-      const normalizarCodigoBata = (code) => {
-        const str = String(code).trim();
-        if (str.length !== 13) return null;
+      const procesarEscaneoCamara = (codigoCrudo, timestamp = Date.now()) => {
+        const codigo = corregirCodigoLeido(codigoCrudo);
+        const esEan13Valido = /^1\d{12}$/.test(codigo);
 
-        // 1. Validar si ya viene en su formato correcto derecho
-        if (str.startsWith('1') && str.substring(9, 12) === '100') {
-          return str;
+        if (!esEan13Valido) {
+          return; 
         }
 
-        // 2. Si la cámara leyó el código al revés (de cabeza / invertido)
-        // Invertimos la cadena completa para ver si el código original estaba volteado
-        const invertido = str.split('').reverse().join('');
-        if (invertido.startsWith('1') && invertido.substring(9, 12) === '100') {
-          return invertido; // ¡Devuelve el código corregido y enderezado!
-        }
-
-        return null; // Si no es ninguno de los dos, se descarta
-      };
-
-      const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        const codigoNormalizado = normalizarCodigoBata(codigo);
-
-        if (!codigoNormalizado) {
-          return; // Descarta códigos inválidos o falsos positivos reales (como el 124 falso)
-        }
-
-        ultimoCodigoRef.current = codigoNormalizado;
+        ultimoCodigoRef.current = codigo;
         tiempoUltimoEscaneoRef.current = timestamp;
 
-        validarYGuardarCodigo(codigoNormalizado);
+        validarYGuardarCodigo(codigo);
       };
 
       const manejarEnvioManual = (ev) => {
         ev.preventDefault();
-        const texto = codigoManual.trim();
-        if (!texto) return;
+        const textoCrudo = codigoManual.trim();
+        if (!textoCrudo) return;
+
+        const texto = corregirCodigoLeido(textoCrudo);
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const codigoNormalizado = normalizarCodigoBata(texto);
+        const esValido13 = /^1\d{12}$/.test(texto);
 
-        if (!esValido7 && !codigoNormalizado) {
+        if (!esValido7 && !esValido13) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
         }
 
-        const codigoFinal = esValido7 ? texto : codigoNormalizado;
-        validarYGuardarCodigo(codigoFinal);
+        const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
+
+        if (existe) {
+          validarYGuardarCodigo(texto);
+        } else {
+          sonarError(vibracionHabilitada);
+          const confirmarFuerza = confirm(
+            `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
+          );
+
+          if (confirmarFuerza) {
+            sonarExito(vibracionHabilitada);
+            actualizarEstadoUsuario(true, "FORZADO", texto);
+            enviarAGoogleSheets(texto, "guardar");
+          } else {
+            actualizarEstadoUsuario(false, "NO EXISTE", texto);
+          }
+        }
+
         setCodigoManual("");
       };
 
@@ -300,23 +322,14 @@
           enviarAGoogleSheets(codigo, "guardar");
         } else {
           sonarError(vibracionHabilitada);
-          const confirmarFuerza = confirm(
-            `El código ${codigo} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
-          );
-
-          if (confirmarFuerza) {
-            sonarExito(vibracionHabilitada);
-            actualizarEstadoUsuario(true, "FORZADO", codigo);
-            enviarAGoogleSheets(codigo, "guardar");
-          } else {
-            actualizarEstadoUsuario(false, "NO EXISTE", codigo);
-          }
+          actualizarEstadoUsuario(false, "NO EXISTE", codigo);
         }
       };
 
       const actualizarEstadoUsuario = (esExito, estadoText, codigo) => {
         setDatosUsuarios(prev => {
           const datosPrevios = prev[usrKey] || { contador: 0, historial: [] };
+
           const nuevoRegistro = {
             id: Date.now(),
             success: esExito,
@@ -353,6 +366,7 @@
         if (confirm(`¿Deseas eliminar el registro ${item.codigo}?`)) {
           setDatosUsuarios(prev => {
             const datosPrevios = prev[usrKey] || { contador: 0, historial: [] };
+
             return {
               ...prev,
               [usrKey]: {
@@ -361,6 +375,7 @@
               }
             };
           });
+
           enviarAGoogleSheets(item.codigo, "eliminar");
         }
       };
@@ -387,7 +402,7 @@
         localStorage.setItem("inv_modo_caja", nuevoCaja);
 
         setMostrarModal(false);
-
+        
         if (escaneando) {
           detenerLector().then(() => iniciarLectorContinuo());
         }
@@ -398,7 +413,7 @@
           e("div", { className: "w-full bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-2xl space-y-5" },
             e("div", { className: "text-center" },
               e("h1", { className: "text-lg font-bold tracking-wider text-gray-100" }, "⚡ INICIAR SESIÓN"),
-              e("p", { className: "text-xs text-gray-400 mt-1" }, "Escáner de Inventario BATA")
+              e("p", { className: "text-xs text-gray-400 mt-1" }, "Escáner de Inventario BATA1")
             ),
             cargandoBase ? 
               e("p", { className: "text-xs text-center text-emerald-400 font-mono animate-pulse" }, "Cargando base de datos...") :
@@ -438,7 +453,7 @@
       return e("div", { className: "flex flex-col p-3 max-w-md mx-auto relative gap-2.5" },
         e("div", { className: "flex justify-between items-center border-b border-gray-800 pb-2" },
           e("div", { className: "flex items-center gap-2" },
-            e("h1", { className: "text-xs font-bold tracking-wider uppercase text-gray-200" }, "⚡ ESCÁNER BATA"),
+            e("h1", { className: "text-xs font-bold tracking-wider uppercase text-gray-200" }, "⚡ ESCÁNER BATA1"),
             e("button", {
               onClick: () => setMostrarModal(true),
               title: "Ajustes de Escáner",
@@ -507,7 +522,7 @@
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o EAN-13)",
+            placeholder: "Manual (7 dígitos o 13 iniciando en 1)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
