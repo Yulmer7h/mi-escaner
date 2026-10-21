@@ -236,10 +236,12 @@
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        // Aceptar cualquier EAN-13 válido que empiece con 1 (ej: 13 dígitos numéricos)
-        const esEan13Valido = /^1\d{12}$/.test(codigo);
+        // REGLA ESTRICTA 100% BLINDADA:
+        // Debe ser EAN-13, empezar con 1, tener exactamente '100' antes de los últimos 2 dígitos.
+        // Rechaza automáticamente el 124 (como 1581650412423).
+        const esEan13Estricto = /^1\d{8}100\d{2}$/.test(codigo);
 
-        if (!esEan13Valido) {
+        if (!esEan13Estricto) {
           return; 
         }
 
@@ -255,9 +257,9 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValidoEan13 = /^1\d{12}$/.test(texto);
+        const esValidoEstricto = /^1\d{8}100\d{2}$/.test(texto);
 
-        if (!esValido7 && !esValidoEan13) {
+        if (!esValido7 && !esValidoEstricto) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
@@ -269,7 +271,6 @@
       };
 
       const validarYGuardarCodigo = (codigo) => {
-        // Verificamos si algún código de la base de datos está contenido dentro del código escrito/leído
         const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
         if (existe) {
@@ -485,7 +486,7 @@
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o EAN-13)",
+            placeholder: "Manual (7 dígitos o EAN-13 con 100)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -571,7 +572,7 @@
       );
     }
 
-    ReactDOM.createRoot(getElementByIdSafe = document.getElementById('root')).render(e(App));
+    ReactDOM.createRoot(document.getElementById('root')).render(e(App));
   </script>
 </body>
 </html>
