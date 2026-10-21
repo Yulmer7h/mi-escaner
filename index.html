@@ -33,15 +33,14 @@
       return globalAudioCtx;
     };
 
-    // FUNCIÓN DE CORRECCIÓN AUTOMÁTICA PARA CÓDIGOS DIFÍCILES O VOLTEADOS
+    // FUNCIÓN DE CORRECCIÓN AUTOMÁTICA PARA CÓDIGOS DIFÍCILES O ARRUGADOS
     const corregirCodigoLeido = (codigo) => {
       const codigoLimpio = String(codigo).trim();
       
-      // Mapeo de códigos erróneos conocidos a su valor correcto real
       const correcciones = {
-        "1581650412423": "1581650410023",
-        // Agrega aquí más códigos difíciles si los detectas en campo:
-        // "CODIGO_ERRONEO_CAMARA": "CODIGO_CORRECTO_REAL",
+        "1581650412423": "1581650410023", // Caja volteada anteriormente
+        "1581650410049": "1556686110049", // Corrección para la etiqueta arrugada compartida
+        // Agrega aquí cualquier otro código erróneo que te arroje la cámara:
       };
 
       return correcciones[codigoLimpio] || codigoLimpio;
@@ -206,7 +205,6 @@
           const html5QrCode = new Html5Qrcode("reader");
           scannerRef.current = html5QrCode;
 
-          // Configuración optimizada exclusivamente para códigos de barras lineales (EAN-13)
           const config = { 
             fps: 30, 
             qrbox: modoCaja === "panoramico" 
