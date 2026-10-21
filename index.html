@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Escáner de Inventario</title>
+  <title>Escáner de Inventario BATA</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -114,7 +114,7 @@
       const [codigoManual, setCodigoManual] = useState("");
       const [cooldown, setCooldown] = useState(parseFloat(localStorage.getItem("inv_cooldown")) || 1.5);
       const [vibracionHabilitada, setVibracionHabilitada] = useState(localStorage.getItem("inv_vibracion") !== "false");
-      const [modoCaja, setModoCaja] = useState(localStorage.getItem("inv_modo_caja") || "panoramico"); // "cuadrado" o "panoramico"
+      const [modoCaja, setModoCaja] = useState(localStorage.getItem("inv_modo_caja") || "panoramico");
       const [mostrarModal, setMostrarModal] = useState(false);
 
       const scannerRef = useRef(null);
@@ -249,9 +249,11 @@
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        const esEan13Valido = /^1\d{12}$/.test(codigo);
+        // VALIDACIÓN ESTRUCTURAL EAN-13 BATA:
+        // Empieza con 1 + 8 dígitos + '100' en la posición exacta + 2 dígitos finales
+        const esEan13BataValido = /^1\d{8}100\d{2}$/.test(codigo);
 
-        if (!esEan13Valido) {
+        if (!esEan13BataValido) {
           return; 
         }
 
@@ -267,9 +269,9 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValido13 = /^1\d{12}$/.test(texto);
+        const esValidoEan13Bata = /^1\d{8}100\d{2}$/.test(texto);
 
-        if (!esValido7 && !esValido13) {
+        if (!esValido7 && !esValidoEan13Bata) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
@@ -387,8 +389,7 @@
         localStorage.setItem("inv_modo_caja", nuevoCaja);
 
         setMostrarModal(false);
-        
-        // Si la cámara está activa, reiniciarla para aplicar el nuevo tamaño de caja
+
         if (escaneando) {
           detenerLector().then(() => iniciarLectorContinuo());
         }
@@ -514,7 +515,7 @@
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o 13 iniciando en 1)",
+            placeholder: "Manual (7 dígitos o 13 con 100)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
