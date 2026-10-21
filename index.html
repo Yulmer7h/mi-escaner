@@ -235,37 +235,40 @@
         }
       };
 
-      // VALIDACIÓN CON LOGS DE DIAGNÓSTICO EN CONSOLA
-      const esEan13BataValido = (code) => {
+      // VALIDADOR Y NORMALIZADOR INTELIGENTE DE CÓDIGOS BATA
+      // Si entra derecho (13 dígitos, empieza por 1, pos 9-11 es '100'), se queda igual.
+      // Si entra al revés (leído de cabeza por la cámara, ej: termina en 1 y tiene el equivalente invertido), 
+      // lo detecta, lo invierte y lo normaliza automáticamente al código correcto.
+      const normalizarCodigoBata = (code) => {
         const str = String(code).trim();
-        console.log("--- EVALUANDO CÓDIGO ---");
-        console.log("Valor:", str, "| Longitud:", str.length);
-        
-        if (str.length !== 13) {
-          console.log("-> FALLO: No mide 13 caracteres (mide", str.length, ")");
-          return false;
+        if (str.length !== 13) return null;
+
+        // 1. Validar si ya viene en su formato correcto derecho
+        if (str.startsWith('1') && str.substring(9, 12) === '100') {
+          return str;
         }
-        if (!str.startsWith('1')) {
-          console.log("-> FALLO: No empieza con 1");
-          return false;
+
+        // 2. Si la cámara leyó el código al revés (de cabeza / invertido)
+        // Invertimos la cadena completa para ver si el código original estaba volteado
+        const invertido = str.split('').reverse().join('');
+        if (invertido.startsWith('1') && invertido.substring(9, 12) === '100') {
+          return invertido; // ¡Devuelve el código corregido y enderezado!
         }
-        const bloqueMedio = str.substring(9, 12);
-        console.log("-> Bloque extraído (posiciones 9, 10, 11):", bloqueMedio);
-        
-        const esValido = bloqueMedio === '100';
-        console.log("-> ¿Es '100'?:", esValido);
-        return esValido;
+
+        return null; // Si no es ninguno de los dos, se descarta
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        if (!esEan13BataValido(codigo)) {
-          return; 
+        const codigoNormalizado = normalizarCodigoBata(codigo);
+
+        if (!codigoNormalizado) {
+          return; // Descarta códigos inválidos o falsos positivos reales (como el 124 falso)
         }
 
-        ultimoCodigoRef.current = codigo;
+        ultimoCodigoRef.current = codigoNormalizado;
         tiempoUltimoEscaneoRef.current = timestamp;
 
-        validarYGuardarCodigo(codigo);
+        validarYGuardarCodigo(codigoNormalizado);
       };
 
       const manejarEnvioManual = (ev) => {
@@ -274,16 +277,17 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValidoEan13 = esEan13BataValido(texto);
+        const codigoNormalizado = normalizarCodigoBata(texto);
 
-        if (!esValido7 && !esValidoEan13) {
+        if (!esValido7 && !codigoNormalizado) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
         }
 
-        validarYGuardarCodigo(texto);
+        const codigoFinal = esValido7 ? texto : codigoNormalizado;
+        validarYGuardarCodigo(codigoFinal);
         setCodigoManual("");
       };
 
@@ -503,7 +507,7 @@
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o EAN-13 válido)",
+            placeholder: "Manual (7 dígitos o EAN-13)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
