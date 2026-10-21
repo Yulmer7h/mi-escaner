@@ -86,9 +86,6 @@
       const scannerRef = useRef(null);
       const ultimoCodigoRef = useRef('');
       const tiempoUltimoEscaneoRef = useRef(0);
-      
-      // TIMER INDUSTRIAL DE TOLERANCIA (1200ms)
-      const timerLecturaInvalidaRef = useRef(null);
 
       useEffect(() => {
         cargarBaseEnRAM();
@@ -158,7 +155,7 @@
           scannerRef.current = html5QrCode;
 
           const config = { 
-            fps: 25, 
+            fps: 20, 
             qrbox: { width: 230, height: 210 },
             aspectRatio: 1.0
           };
@@ -174,7 +171,7 @@
               const ahora = Date.now();
 
               if (codigoLeido !== ultimoCodigoRef.current || (ahora - tiempoUltimoEscaneoRef.current) > (cooldown * 1000)) {
-                procesarCodigoConBufferIndustrial(codigoLeido, ahora);
+                procesarEscaneoCamara(codigoLeido, ahora);
               }
             },
             () => {}
@@ -194,7 +191,6 @@
           } catch(e) {}
           setEscaneando(false);
           setLinternaEncendida(false);
-          if (timerLecturaInvalidaRef.current) clearTimeout(timerLecturaInvalidaRef.current);
         }
       };
 
@@ -212,43 +208,50 @@
         }
       };
 
-      // --- LÓGICA INDUSTRIAL CON 1.2 SEGUNDOS DE TOLERANCIA ---
-      const procesarCodigoConBufferIndustrial = (codigo, timestamp) => {
-        const esValido7 = /^\d{7}$/.test(codigo);
-        const esValido13 = /^1\d{12}$/.test(codigo);
+      // PROCESAMIENTO EXCLUSIVO CÁMARA: Solo acepta EAN-13 que empiece por '1'
+      const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
+        const esEan13Valido = /^1\d{12}$/.test(codigo);
 
-        const existe = (esValido7 || esValido13) && dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
+        // Si NO es EAN-13 iniciando en 1, ignora en silencio sin sonar ni guardar nada
+        if (!esEan13Valido) {
+          return; 
+        }
 
-        // SI EL CÓDIGO ES CORRECTO: Cancela el timer de error inmediatamente y registra el OK
+        ultimoCodigoRef.current = codigo;
+        tiempoUltimoEscaneoRef.current = timestamp;
+
+        validarYGuardarCodigo(codigo);
+      };
+
+      // PROCESAMIENTO INGRESO MANUAL: Permite 7 dígitos o EAN-13 iniciando en '1'
+      const manejarEnvioManual = (e) => {
+        e.preventDefault();
+        const texto = codigoManual.trim();
+        if (!texto) return;
+
+        const esValido7 = /^\d{7}$/.test(texto);
+        const esValido13 = /^1\d{12}$/.test(texto);
+
+        if (!esValido7 && !esValido13) {
+          sonarError();
+          actualizarEstadoUsuario(false, "INVÁLIDO", texto);
+        } else {
+          validarYGuardarCodigo(texto);
+        }
+
+        setCodigoManual("");
+      };
+
+      const validarYGuardarCodigo = (codigo) => {
+        const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
+
         if (existe) {
-          if (timerLecturaInvalidaRef.current) {
-            clearTimeout(timerLecturaInvalidaRef.current);
-            timerLecturaInvalidaRef.current = null;
-          }
-
-          ultimoCodigoRef.current = codigo;
-          tiempoUltimoEscaneoRef.current = timestamp;
-
           sonarExito();
           actualizarEstadoUsuario(true, "OK", codigo);
           enviarAGoogleSheets(codigo, "guardar");
-          return;
-        }
-
-        // SI ES LECTURA DUDA/DEFECTUOSA: Espera 1200ms (1.2s) a que la cámara termine de enfocar
-        if (!timerLecturaInvalidaRef.current) {
-          timerLecturaInvalidaRef.current = setTimeout(() => {
-            timerLecturaInvalidaRef.current = null;
-            
-            ultimoCodigoRef.current = codigo;
-            tiempoUltimoEscaneoRef.current = Date.now();
-
-            const esFormatoCorrecto = esValido7 || esValido13;
-            const estadoFinal = esFormatoCorrecto ? "NO EXISTE" : "INVÁLIDO";
-
-            sonarError();
-            actualizarEstadoUsuario(false, estadoFinal, codigo);
-          }, 1200); // Ventana industrial de 1.2 segundos
+        } else {
+          sonarError();
+          actualizarEstadoUsuario(false, "NO EXISTE", codigo);
         }
       };
 
@@ -286,32 +289,6 @@
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: formData
         });
-      };
-
-      const manejarEnvioManual = (e) => {
-        e.preventDefault();
-        const texto = codigoManual.trim();
-        if (!texto) return;
-
-        const esValido7 = /^\d{7}$/.test(texto);
-        const esValido13 = /^1\d{12}$/.test(texto);
-
-        if (!esValido7 && !esValido13) {
-          sonarError();
-          actualizarEstadoUsuario(false, "INVÁLIDO", texto);
-        } else {
-          const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
-          if (existe) {
-            sonarExito();
-            actualizarEstadoUsuario(true, "OK", texto);
-            enviarAGoogleSheets(texto, "guardar");
-          } else {
-            sonarError();
-            actualizarEstadoUsuario(false, "NO EXISTE", texto);
-          }
-        }
-
-        setCodigoManual("");
       };
 
       const borrarLectura = (item) => {
