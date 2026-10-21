@@ -33,7 +33,6 @@
       return globalAudioCtx;
     };
 
-    // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 60ms)
     const sonarExito = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
@@ -51,16 +50,13 @@
 
         osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + 0.06);
-      } catch(err) {
-        console.error("Error reproduciendo audio:", err);
-      }
+      } catch(err) {}
 
       if (activarVib && navigator.vibrate) {
         navigator.vibrate(50);
       }
     };
 
-    // SONIDO DE ERROR BUZZER ORIGINAL
     const sonarError = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
@@ -76,9 +72,7 @@
           osc.start(audioCtx.currentTime + delay);
           osc.stop(audioCtx.currentTime + delay + 0.1);
         });
-      } catch(err) {
-        console.error("Error reproduciendo audio:", err);
-      }
+      } catch(err) {}
 
       if (activarVib && navigator.vibrate) {
         navigator.vibrate([100, 50, 100]);
@@ -139,10 +133,8 @@
         try {
           const res = await fetch(WEB_APP_URL, { redirect: "follow" });
           const data = await res.json();
-          
           setDbLocal(data.codigos || []);
           setListaUsuarios(data.usuarios || []);
-
           setCargandoBase(false);
           setSincronizando(false);
         } catch (err) {
@@ -155,21 +147,17 @@
       const manejarLogin = (e) => {
         e.preventDefault();
         setErrorLogin("");
-
         const encontrado = listaUsuarios.find(
           u => String(u.dni).trim() === String(inputDni).trim() && String(u.pass).trim() === String(inputPass).trim()
         );
-
         if (!encontrado) {
           setErrorLogin("DNI o contraseña incorrectos.");
           return;
         }
-
         if (encontrado.estado.toLowerCase() !== "activo") {
           setErrorLogin("Tu usuario está inactivo. Consulta al administrador.");
           return;
         }
-
         setUsuarioActivo(encontrado);
         localStorage.setItem("inv_usuario_activo", JSON.stringify(encontrado));
         setInputDni("");
@@ -216,7 +204,6 @@
             },
             () => {}
           );
-
         } catch (err) {
           setEscaneando(false);
           alert("Error de inicio de cámara: " + err);
@@ -249,11 +236,10 @@
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
-        // VALIDACIÓN ESTRUCTURAL EAN-13 BATA:
-        // Empieza con 1 + 8 dígitos + '100' en la posición exacta + 2 dígitos finales
-        const esEan13BataValido = /^1\d{8}100\d{2}$/.test(codigo);
+        // Aceptar cualquier EAN-13 válido que empiece con 1 (ej: 13 dígitos numéricos)
+        const esEan13Valido = /^1\d{12}$/.test(codigo);
 
-        if (!esEan13BataValido) {
+        if (!esEan13Valido) {
           return; 
         }
 
@@ -269,38 +255,21 @@
         if (!texto) return;
 
         const esValido7 = /^\d{7}$/.test(texto);
-        const esValidoEan13Bata = /^1\d{8}100\d{2}$/.test(texto);
+        const esValidoEan13 = /^1\d{12}$/.test(texto);
 
-        if (!esValido7 && !esValidoEan13Bata) {
+        if (!esValido7 && !esValidoEan13) {
           sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
         }
 
-        const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
-
-        if (existe) {
-          validarYGuardarCodigo(texto);
-        } else {
-          sonarError(vibracionHabilitada);
-          const confirmarFuerza = confirm(
-            `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
-          );
-
-          if (confirmarFuerza) {
-            sonarExito(vibracionHabilitada);
-            actualizarEstadoUsuario(true, "FORZADO", texto);
-            enviarAGoogleSheets(texto, "guardar");
-          } else {
-            actualizarEstadoUsuario(false, "NO EXISTE", texto);
-          }
-        }
-
+        validarYGuardarCodigo(texto);
         setCodigoManual("");
       };
 
       const validarYGuardarCodigo = (codigo) => {
+        // Verificamos si algún código de la base de datos está contenido dentro del código escrito/leído
         const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
         if (existe) {
@@ -309,14 +278,23 @@
           enviarAGoogleSheets(codigo, "guardar");
         } else {
           sonarError(vibracionHabilitada);
-          actualizarEstadoUsuario(false, "NO EXISTE", codigo);
+          const confirmarFuerza = confirm(
+            `El código ${codigo} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
+          );
+
+          if (confirmarFuerza) {
+            sonarExito(vibracionHabilitada);
+            actualizarEstadoUsuario(true, "FORZADO", codigo);
+            enviarAGoogleSheets(codigo, "guardar");
+          } else {
+            actualizarEstadoUsuario(false, "NO EXISTE", codigo);
+          }
         }
       };
 
       const actualizarEstadoUsuario = (esExito, estadoText, codigo) => {
         setDatosUsuarios(prev => {
           const datosPrevios = prev[usrKey] || { contador: 0, historial: [] };
-
           const nuevoRegistro = {
             id: Date.now(),
             success: esExito,
@@ -353,7 +331,6 @@
         if (confirm(`¿Deseas eliminar el registro ${item.codigo}?`)) {
           setDatosUsuarios(prev => {
             const datosPrevios = prev[usrKey] || { contador: 0, historial: [] };
-
             return {
               ...prev,
               [usrKey]: {
@@ -362,7 +339,6 @@
               }
             };
           });
-
           enviarAGoogleSheets(item.codigo, "eliminar");
         }
       };
@@ -395,13 +371,12 @@
         }
       };
 
-      // VISTA DE LOGIN
       if (!usuarioActivo) {
         return e("div", { className: "flex flex-col justify-center items-center min-h-screen p-4 max-w-sm mx-auto" },
           e("div", { className: "w-full bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-2xl space-y-5" },
             e("div", { className: "text-center" },
               e("h1", { className: "text-lg font-bold tracking-wider text-gray-100" }, "⚡ INICIAR SESIÓN"),
-              e("p", { className: "text-xs text-gray-400 mt-1" }, "Escáner de Inventario BATA1")
+              e("p", { className: "text-xs text-gray-400 mt-1" }, "Escáner de Inventario BATA")
             ),
             cargandoBase ? 
               e("p", { className: "text-xs text-center text-emerald-400 font-mono animate-pulse" }, "Cargando base de datos...") :
@@ -438,12 +413,10 @@
         );
       }
 
-      // VISTA PRINCIPAL
       return e("div", { className: "flex flex-col p-3 max-w-md mx-auto relative gap-2.5" },
-        // HEADER CON ICONOS SVG
         e("div", { className: "flex justify-between items-center border-b border-gray-800 pb-2" },
           e("div", { className: "flex items-center gap-2" },
-            e("h1", { className: "text-xs font-bold tracking-wider uppercase text-gray-200" }, "⚡ ESCÁNER BATA1"),
+            e("h1", { className: "text-xs font-bold tracking-wider uppercase text-gray-200" }, "⚡ ESCÁNER BATA"),
             e("button", {
               onClick: () => setMostrarModal(true),
               title: "Ajustes de Escáner",
@@ -470,7 +443,6 @@
           )
         ),
 
-        // DATOS DE SESIÓN Y CONTEO
         e("div", { className: "flex justify-between items-center bg-gray-900 px-3 py-2 rounded-xl border border-gray-800 text-xs" },
           e("div", { className: "flex items-center gap-2" },
             e("span", { className: "text-gray-400" }, "Usuario:"),
@@ -480,7 +452,6 @@
           e("div", null, "Capturados: ", e("span", { className: "text-emerald-400 font-bold text-sm" }, contadorTurno))
         ),
 
-        // CÁMARA ESCÁNER
         e("div", { className: "bg-gray-900 border-2 border-emerald-500 rounded-2xl overflow-hidden relative min-h-[260px] flex flex-col items-center justify-center shadow-2xl" },
           e("div", { id: "reader", className: "w-full h-full" }),
           !escaneando && e("div", { className: "p-6 text-center space-y-4 absolute inset-0 bg-gray-900 flex flex-col justify-center items-center z-10" },
@@ -511,11 +482,10 @@
           )
         ),
 
-        // FORMULARIO MANUAL
         e("form", { onSubmit: manejarEnvioManual, className: "flex gap-2" },
           e("input", {
             type: "number",
-            placeholder: "Manual (7 dígitos o 13 con 100)",
+            placeholder: "Manual (7 dígitos o EAN-13)",
             value: codigoManual,
             onChange: (ev) => setCodigoManual(ev.target.value),
             className: "flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -523,7 +493,6 @@
           e("button", { type: "submit", className: "bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-xl active:scale-95 transition" }, "Agregar")
         ),
 
-        // HISTORIAL DE LECTURAS
         historial.length > 0 && e("div", { className: "border-t border-gray-800 pt-2" },
           e("p", { className: "text-[10px] text-gray-400 mb-1 font-bold uppercase tracking-wider" }, "Últimas lecturas"),
           e("div", { className: "space-y-1 max-h-44 overflow-y-auto" },
@@ -543,7 +512,6 @@
           )
         ),
 
-        // MODAL DE CONFIGURACIÓN
         mostrarModal && e("div", { className: "fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50" },
           e("div", { className: "bg-gray-900 border border-gray-800 p-4 rounded-2xl w-full max-w-xs space-y-4" },
             e("h3", { className: "text-sm font-bold text-gray-200 flex items-center gap-1.5" },
@@ -603,7 +571,7 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+    ReactDOM.createRoot(getElementByIdSafe = document.getElementById('root')).render(e(App));
   </script>
 </body>
 </html>
