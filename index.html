@@ -235,20 +235,31 @@
         }
       };
 
-      // VALIDACIÓN SIMPLE Y SEGURA POR POSICIÓN DE SUBSTRING
-      // 1. Debe medir 13 dígitos y empezar con '1'
-      // 2. Los caracteres de la posición 9 a la 11 (índice 9, 10, 11) deben ser '100'
+      // VALIDACIÓN CON LOGS DE DIAGNÓSTICO EN CONSOLA
       const esEan13BataValido = (code) => {
         const str = String(code).trim();
-        if (str.length !== 13) return false;
-        if (!str.startsWith('1')) return false;
-        const bloqueMedio = str.substring(9, 12); // Extrae los caracteres en posiciones 9, 10 y 11
-        return bloqueMedio === '100';
+        console.log("--- EVALUANDO CÓDIGO ---");
+        console.log("Valor:", str, "| Longitud:", str.length);
+        
+        if (str.length !== 13) {
+          console.log("-> FALLO: No mide 13 caracteres (mide", str.length, ")");
+          return false;
+        }
+        if (!str.startsWith('1')) {
+          console.log("-> FALLO: No empieza con 1");
+          return false;
+        }
+        const bloqueMedio = str.substring(9, 12);
+        console.log("-> Bloque extraído (posiciones 9, 10, 11):", bloqueMedio);
+        
+        const esValido = bloqueMedio === '100';
+        console.log("-> ¿Es '100'?:", esValido);
+        return esValido;
       };
 
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
         if (!esEan13BataValido(codigo)) {
-          return; // Rechaza silenciosamente si la cámara lee algo que no es
+          return; 
         }
 
         ultimoCodigoRef.current = codigo;
