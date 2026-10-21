@@ -33,7 +33,7 @@
       return globalAudioCtx;
     };
 
-    // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 60ms)
+    // BEEP POS / SUPERMERCADO (ÉXITO)
     const sonarExito = () => {
       try {
         const audioCtx = obtenerAudioContext();
@@ -51,30 +51,26 @@
 
         osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + 0.06);
-      } catch(err) {
-        console.error("Error reproduciendo audio:", err);
-      }
+      } catch(err) {}
     };
 
-    // SONIDO DE ERROR BUZZER ORIGINAL
+    // TONO DE ERROR SUAVE (Doble beep grave no molesto)
     const sonarError = () => {
       try {
         const audioCtx = obtenerAudioContext();
-        [0, 0.12].forEach((delay) => {
+        [0, 0.1].forEach((delay) => {
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(180, audioCtx.currentTime + delay);
-          gain.gain.setValueAtTime(0.25, audioCtx.currentTime + delay);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.1);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(400, audioCtx.currentTime + delay);
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime + delay);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + delay + 0.08);
           osc.connect(gain);
           gain.connect(audioCtx.destination);
           osc.start(audioCtx.currentTime + delay);
-          osc.stop(audioCtx.currentTime + delay + 0.1);
+          osc.stop(audioCtx.currentTime + delay + 0.08);
         });
-      } catch(err) {
-        console.error("Error reproduciendo audio:", err);
-      }
+      } catch(err) {}
     };
 
     function App() {
@@ -108,8 +104,7 @@
       const [mostrarModal, setMostrarModal] = useState(false);
 
       const scannerRef = useRef(null);
-      const ultimoCodigoRef = useRef('');
-      const tiempoUltimoEscaneoRef = useRef(0);
+      const tiempoBloqueoErrorRef = useRef(0); // Control exclusivo para enfriamiento tras error
 
       useEffect(() => {
         cargarBaseEnRAM();
@@ -198,9 +193,12 @@
               const codigoLeido = decodedText.trim();
               const ahora = Date.now();
 
-              if (codigoLeido !== ultimoCodigoRef.current || (ahora - tiempoUltimoEscaneoRef.current) > (cooldown * 1000)) {
-                procesarEscaneoCamara(codigoLeido, ahora);
+              // El enfriamiento SOLO se aplica si la lectura anterior dio ERROR / NO EXISTE
+              if ((ahora - tiempoBloqueoErrorRef.current) < (cooldown * 1000)) {
+                return;
               }
+
+              procesarEscaneoCamara(codigoLeido, ahora);
             },
             () => {}
           );
@@ -236,17 +234,14 @@
         }
       };
 
-      const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
+      const procesarEscaneoCamara = (codigo, timestamp) => {
         const esEan13Valido = /^1\d{12}$/.test(codigo);
 
         if (!esEan13Valido) {
           return; 
         }
 
-        ultimoCodigoRef.current = codigo;
-        tiempoUltimoEscaneoRef.current = timestamp;
-
-        validarYGuardarCodigo(codigo);
+        validarYGuardarCodigo(codigo, timestamp);
       };
 
       const manejarEnvioManual = (ev) => {
@@ -259,6 +254,7 @@
 
         if (!esValido7 && !esValido13) {
           sonarError();
+          tiempoBloqueoErrorRef.current = Date.now(); // Activa enfriamiento por error
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
@@ -267,9 +263,10 @@
         const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
 
         if (existe) {
-          validarYGuardarCodigo(texto);
+          validarYGuardarCodigo(texto, Date.now());
         } else {
           sonarError();
+          tiempoBloqueoErrorRef.current = Date.now(); // Activa enfriamiento por error
           const confirmarFuerza = confirm(
             `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
           );
@@ -286,15 +283,17 @@
         setCodigoManual("");
       };
 
-      const validarYGuardarCodigo = (codigo) => {
+      const validarYGuardarCodigo = (codigo, timestamp) => {
         const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
         if (existe) {
           sonarExito();
+          // Lectura OK: NO activamos tiempoBloqueoErrorRef, permitiendo fluidez inmediata al siguiente código
           actualizarEstadoUsuario(true, "OK", codigo);
           enviarAGoogleSheets(codigo, "guardar");
         } else {
           sonarError();
+          tiempoBloqueoErrorRef.current = timestamp; // Activa enfriamiento solo porque no existe
           actualizarEstadoUsuario(false, "NO EXISTE", codigo);
         }
       };
