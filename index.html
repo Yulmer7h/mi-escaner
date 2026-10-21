@@ -24,20 +24,22 @@
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+    // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 50ms)
     const sonarExito = () => {
       if (audioCtx.state === 'suspended') audioCtx.resume();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(1800, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+      osc.frequency.setValueAtTime(2400, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start();
-      osc.stop(audioCtx.currentTime + 0.08);
+      osc.stop(audioCtx.currentTime + 0.05);
     };
 
+    // SONIDO DE ERROR BUZZER ORIGINAL
     const sonarError = () => {
       if (audioCtx.state === 'suspended') audioCtx.resume();
       [0, 0.12].forEach((delay) => {
@@ -208,11 +210,10 @@
         }
       };
 
-      // PROCESAMIENTO EXCLUSIVO CÁMARA: Solo acepta EAN-13 que empiece por '1'
+      // PROCESAMIENTO EXCLUSIVO CÁMARA
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
         const esEan13Valido = /^1\d{12}$/.test(codigo);
 
-        // Si NO es EAN-13 iniciando en 1, ignora en silencio sin sonar ni guardar nada
         if (!esEan13Valido) {
           return; 
         }
@@ -223,7 +224,7 @@
         validarYGuardarCodigo(codigo);
       };
 
-      // PROCESAMIENTO INGRESO MANUAL: Permite 7 dígitos o EAN-13 iniciando en '1'
+      // PROCESAMIENTO INGRESO MANUAL CON OPCIÓN DE FORZAR CÓDIGO INEXISTENTE
       const manejarEnvioManual = (e) => {
         e.preventDefault();
         const texto = codigoManual.trim();
@@ -235,8 +236,27 @@
         if (!esValido7 && !esValido13) {
           sonarError();
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
-        } else {
+          setCodigoManual("");
+          return;
+        }
+
+        const existe = dbLocal.some(codigoBase => String(texto).includes(String(codigoBase).trim()));
+
+        if (existe) {
           validarYGuardarCodigo(texto);
+        } else {
+          sonarError();
+          const confirmarFuerza = confirm(
+            `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
+          );
+
+          if (confirmarFuerza) {
+            sonarExito();
+            actualizarEstadoUsuario(true, "FORZADO", texto);
+            enviarAGoogleSheets(texto, "guardar");
+          } else {
+            actualizarEstadoUsuario(false, "NO EXISTE", texto);
+          }
         }
 
         setCodigoManual("");
@@ -392,7 +412,16 @@
                 ⚙️
               </button>
             </div>
-            <span class="text-xs font-mono font-bold text-emerald-400">Base: {dbLocal.length} regs</span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-mono font-bold text-emerald-400">Base: {dbLocal.length} regs</span>
+              <button 
+                onClick={cargarBaseEnRAM}
+                title="Actualizar base de datos"
+                class="bg-gray-800 hover:bg-gray-700 text-emerald-400 text-xs px-2 py-0.5 rounded border border-gray-700 active:scale-95 transition"
+              >
+                🔄
+              </button>
+            </div>
           </div>
 
           <div class="flex justify-between items-center bg-gray-900 px-3 py-2 rounded-xl border border-gray-800 text-xs">
