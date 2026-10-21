@@ -34,7 +34,7 @@
     };
 
     // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 60ms)
-    const sonarExito = () => {
+    const sonarExito = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
         const osc = audioCtx.createOscillator();
@@ -54,10 +54,14 @@
       } catch(err) {
         console.error("Error reproduciendo audio:", err);
       }
+
+      if (activarVib && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
     };
 
     // SONIDO DE ERROR BUZZER ORIGINAL
-    const sonarError = () => {
+    const sonarError = (activarVib) => {
       try {
         const audioCtx = obtenerAudioContext();
         [0, 0.12].forEach((delay) => {
@@ -74,6 +78,10 @@
         });
       } catch(err) {
         console.error("Error reproduciendo audio:", err);
+      }
+
+      if (activarVib && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
       }
     };
 
@@ -105,6 +113,8 @@
 
       const [codigoManual, setCodigoManual] = useState("");
       const [cooldown, setCooldown] = useState(parseFloat(localStorage.getItem("inv_cooldown")) || 1.5);
+      const [vibracionHabilitada, setVibracionHabilitada] = useState(localStorage.getItem("inv_vibracion") !== "false");
+      const [modoCaja, setModoCaja] = useState(localStorage.getItem("inv_modo_caja") || "panoramico"); // "cuadrado" o "panoramico"
       const [mostrarModal, setMostrarModal] = useState(false);
 
       const scannerRef = useRef(null);
@@ -183,8 +193,10 @@
           scannerRef.current = html5QrCode;
 
           const config = { 
-            fps: 20, 
-            qrbox: { width: 230, height: 210 },
+            fps: 30, 
+            qrbox: modoCaja === "panoramico" 
+              ? (viewfinderWidth, viewfinderHeight) => ({ width: viewfinderWidth * 0.85, height: 130 })
+              : { width: 230, height: 210 },
             aspectRatio: 1.0
           };
 
@@ -258,7 +270,7 @@
         const esValido13 = /^1\d{12}$/.test(texto);
 
         if (!esValido7 && !esValido13) {
-          sonarError();
+          sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "INVÁLIDO", texto);
           setCodigoManual("");
           return;
@@ -269,13 +281,13 @@
         if (existe) {
           validarYGuardarCodigo(texto);
         } else {
-          sonarError();
+          sonarError(vibracionHabilitada);
           const confirmarFuerza = confirm(
             `El código ${texto} NO existe en la base de datos base.\n\n¿Deseas ingresarlo de todas formas al inventario?`
           );
 
           if (confirmarFuerza) {
-            sonarExito();
+            sonarExito(vibracionHabilitada);
             actualizarEstadoUsuario(true, "FORZADO", texto);
             enviarAGoogleSheets(texto, "guardar");
           } else {
@@ -290,11 +302,11 @@
         const existe = dbLocal.some(codigoBase => String(codigo).includes(String(codigoBase).trim()));
 
         if (existe) {
-          sonarExito();
+          sonarExito(vibracionHabilitada);
           actualizarEstadoUsuario(true, "OK", codigo);
           enviarAGoogleSheets(codigo, "guardar");
         } else {
-          sonarError();
+          sonarError(vibracionHabilitada);
           actualizarEstadoUsuario(false, "NO EXISTE", codigo);
         }
       };
@@ -361,10 +373,25 @@
         }
       };
 
-      const guardarAjustes = (nuevoCooldown) => {
-        setCooldown(nuevoCooldown);
-        localStorage.setItem("inv_cooldown", nuevoCooldown);
+      const guardarAjustes = () => {
+        const nuevoCool = parseFloat(document.getElementById("inputCool").value) || 1.5;
+        const nuevaVib = document.getElementById("checkVib").checked;
+        const nuevoCaja = document.getElementById("selectCaja").value;
+
+        setCooldown(nuevoCool);
+        setVibracionHabilitada(nuevaVib);
+        setModoCaja(nuevoCaja);
+
+        localStorage.setItem("inv_cooldown", nuevoCool);
+        localStorage.setItem("inv_vibracion", nuevaVib);
+        localStorage.setItem("inv_modo_caja", nuevoCaja);
+
         setMostrarModal(false);
+        
+        // Si la cámara está activa, reiniciarla para aplicar el nuevo tamaño de caja
+        if (escaneando) {
+          detenerLector().then(() => iniciarLectorContinuo());
+        }
       };
 
       // VISTA DE LOGIN
@@ -534,7 +561,27 @@
                 max: "5",
                 defaultValue: cooldown,
                 id: "inputCool",
-                className: "w-full bg-gray-950 border border-gray-800 rounded p-2 text-sm text-white"
+                className: "w-full bg-gray-950 border border-gray-800 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              })
+            ),
+            e("div", null,
+              e("label", { className: "text-xs text-gray-400 block mb-1" }, "Forma de la Caja de Escaneo:"),
+              e("select", {
+                defaultValue: modoCaja,
+                id: "selectCaja",
+                className: "w-full bg-gray-950 border border-gray-800 rounded p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              },
+                e("option", { value: "panoramico" }, "Ancho / Rápido (Ideal EAN-13)"),
+                e("option", { value: "cuadrado" }, "Estándar (Cuadrado)")
+              )
+            ),
+            e("div", { className: "flex items-center justify-between pt-1" },
+              e("label", { className: "text-xs text-gray-400" }, "Vibración háptica al escanear:"),
+              e("input", {
+                type: "checkbox",
+                defaultChecked: vibracionHabilitada,
+                id: "checkVib",
+                className: "w-4 h-4 accent-emerald-600 rounded bg-gray-950 border-gray-800"
               })
             ),
             e("div", { className: "border-t border-gray-800 pt-3" },
@@ -546,8 +593,8 @@
             e("div", { className: "flex justify-end gap-2 pt-2" },
               e("button", { onClick: () => setMostrarModal(false), className: "text-xs text-gray-400 px-3 py-1.5" }, "Cancelar"),
               e("button", {
-                onClick: () => guardarAjustes(parseFloat(document.getElementById("inputCool").value) || 1.5),
-                className: "bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+                onClick: guardarAjustes,
+                className: "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
               }, "Guardar")
             )
           )
