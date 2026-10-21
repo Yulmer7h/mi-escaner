@@ -22,38 +22,50 @@
 
     const { useState, useEffect, useRef } = React;
 
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    // BEEP TIPO SUPERMERCADO / POS (2400 Hz por 50ms)
+    // BEEP POS / SUPERMERCADO MEJORADO
     const sonarExito = () => {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(2400, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.05);
-    };
-
-    // SONIDO DE ERROR BUZZER ORIGINAL
-    const sonarError = () => {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      [0, 0.12].forEach((delay) => {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(180, audioCtx.currentTime + delay);
-        gain.gain.setValueAtTime(0.25, audioCtx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.1);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(2400, audioCtx.currentTime); // Frecuencia aguda seca
+
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.06);
+
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        osc.start(audioCtx.currentTime + delay);
-        osc.stop(audioCtx.currentTime + delay + 0.1);
-      });
+
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.06);
+      } catch(e) {}
+    };
+
+    // BUZZER ERROR
+    const sonarError = () => {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        [0, 0.12].forEach((delay) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(180, audioCtx.currentTime + delay);
+          gain.gain.setValueAtTime(0.25, audioCtx.currentTime + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.1);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(audioCtx.currentTime + delay);
+          osc.stop(audioCtx.currentTime + delay + 0.1);
+        });
+      } catch(e) {}
     };
 
     function App() {
@@ -71,6 +83,7 @@
       const [errorLogin, setErrorLogin] = useState("");
 
       const [cargandoBase, setCargandoBase] = useState(true);
+      const [sincronizando, setSincronizando] = useState(false);
       const [escaneando, setEscaneando] = useState(false);
       const [linternaEncendida, setLinternaEncendida] = useState(false);
 
@@ -100,7 +113,7 @@
       }, [datosUsuarios]);
 
       const cargarBaseEnRAM = async () => {
-        setCargandoBase(true);
+        setSincronizando(true);
         try {
           const res = await fetch(WEB_APP_URL, { redirect: "follow" });
           const data = await res.json();
@@ -109,9 +122,11 @@
           setListaUsuarios(data.usuarios || []);
 
           setCargandoBase(false);
+          setSincronizando(false);
         } catch (err) {
           alert("Error al conectar con la base de datos: " + err);
           setCargandoBase(false);
+          setSincronizando(false);
         }
       };
 
@@ -150,8 +165,6 @@
       const historial = datosUsuarios[usrKey]?.historial || [];
 
       const iniciarLectorContinuo = async () => {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-
         try {
           const html5QrCode = new Html5Qrcode("reader");
           scannerRef.current = html5QrCode;
@@ -210,7 +223,7 @@
         }
       };
 
-      // PROCESAMIENTO EXCLUSIVO CÁMARA
+      // CÁMARA: Solo EAN-13 que inicie con 1
       const procesarEscaneoCamara = (codigo, timestamp = Date.now()) => {
         const esEan13Valido = /^1\d{12}$/.test(codigo);
 
@@ -224,7 +237,7 @@
         validarYGuardarCodigo(codigo);
       };
 
-      // PROCESAMIENTO INGRESO MANUAL CON OPCIÓN DE FORZAR CÓDIGO INEXISTENTE
+      // MANUAL: 7 dígitos o 13 con opción de confirmar inexistente
       const manejarEnvioManual = (e) => {
         e.preventDefault();
         const texto = codigoManual.trim();
@@ -400,26 +413,39 @@
       return (
         <div class="flex flex-col p-3 max-w-md mx-auto relative gap-2.5">
           
+          <!-- ENCABEZADO CON BOTONES SVG ESTILIZADOS -->
           <div class="flex justify-between items-center border-b border-gray-800 pb-2">
             <div class="flex items-center gap-2">
               <h1 class="text-xs font-bold tracking-wider uppercase text-gray-200">
                 ⚡ ESCÁNER BATA1
               </h1>
+              <!-- BOTÓN CONFIGURACIÓN -->
               <button 
                 onClick={() => setMostrarModal(true)} 
-                class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded border border-gray-700"
+                title="Ajustes de Escáner"
+                class="bg-gray-900 hover:bg-gray-800 border border-gray-700/80 text-gray-300 p-1.5 rounded-lg transition active:scale-90 flex items-center justify-center shadow-sm"
               >
-                ⚙️
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
               </button>
             </div>
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-mono font-bold text-emerald-400">Base: {dbLocal.length} regs</span>
+
+            <!-- REGISTROS Y BOTÓN ACTUALIZAR -->
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                Base: {dbLocal.length}
+              </span>
               <button 
                 onClick={cargarBaseEnRAM}
+                disabled={sincronizando}
                 title="Actualizar base de datos"
-                class="bg-gray-800 hover:bg-gray-700 text-emerald-400 text-xs px-2 py-0.5 rounded border border-gray-700 active:scale-95 transition"
+                class="bg-gray-900 hover:bg-gray-800 border border-emerald-700/80 text-emerald-400 p-1.5 rounded-lg transition active:scale-90 flex items-center justify-center shadow-sm disabled:opacity-50"
               >
-                🔄
+                <svg class={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
               </button>
             </div>
           </div>
@@ -451,9 +477,13 @@
                 <button 
                   onClick={iniciarLectorContinuo}
                   disabled={cargandoBase}
-                  class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm py-3 px-6 rounded-xl shadow-lg transition disabled:opacity-50"
+                  class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm py-3 px-6 rounded-xl shadow-lg transition disabled:opacity-50 flex items-center gap-2"
                 >
-                  📷 INICIAR CÁMARA
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  </svg>
+                  INICIAR CÁMARA
                 </button>
               </div>
             )}
@@ -462,9 +492,12 @@
               <div class="absolute top-3 right-3 flex gap-2 z-20">
                 <button 
                   onClick={toggleLinterna}
-                  class={`text-xs font-bold px-3 py-1.5 rounded-lg shadow-md transition ${linternaEncendida ? 'bg-yellow-500 text-black' : 'bg-gray-800/90 text-white border border-gray-700'}`}
+                  class={`text-xs font-bold px-3 py-1.5 rounded-lg shadow-md transition flex items-center gap-1 ${linternaEncendida ? 'bg-yellow-500 text-black' : 'bg-gray-800/90 text-white border border-gray-700'}`}
                 >
-                  {linternaEncendida ? '💡 On' : '🔦 Flash'}
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                  </svg>
+                  {linternaEncendida ? 'On' : 'Flash'}
                 </button>
                 <button 
                   onClick={detenerLector}
@@ -519,7 +552,13 @@
           {mostrarModal && (
             <div class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
               <div class="bg-gray-900 border border-gray-800 p-4 rounded-2xl w-full max-w-xs space-y-4">
-                <h3 class="text-sm font-bold text-gray-200">⚙️ Ajustes de Escáner</h3>
+                <h3 class="text-sm font-bold text-gray-200 flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  </svg>
+                  Ajustes de Escáner
+                </h3>
                 
                 <div>
                   <label class="text-xs text-gray-400 block mb-1">Enfriamiento entre lecturas (seg):</label>
